@@ -37,6 +37,8 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/converter/iommu"
+
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/log"
 	"kubevirt.io/client-go/precond"
@@ -60,6 +62,7 @@ import (
 	"kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/converter/vcpu"
 	"kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/converter/virtio"
 	"kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/device"
+	iommupci "kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/iommu-pci"
 )
 
 const (
@@ -1146,10 +1149,56 @@ func Convert_v1_VirtualMachineInstance_To_api_Domain(vmi *v1.VirtualMachineInsta
 			}
 
 			if c.PCINUMAAwareTopologyEnabled {
-				if err := PlacePCIDevicesWithNUMAAlignment(&domain.Spec); err != nil {
+				// Place PCI devices on NUMA-aligned topology and configure IOMMU
+				err := PlacePCIDevicesWithNUMAAlignment(&domain.Spec, c.IommuPCI)
+				if err != nil {
 					log.Log.Reason(err).Warningf("Failed to process PCIe NUMA-aware topology, falling back to default placement")
+				} else {
+					// Handle IOMMU-specific configuration (fake NUMA nodes, etc.)
+					iommu.HandleIOMMU(&domain.Spec, c.IommuPCI)
+					if c.IommuPCI != nil && c.IommuPCI.PCIHoleSize != 0 {
+						// Calculate and configure the PCI hole size for 64-bit memory regions.
+						// The PCI hole is guest physical address space reserved for mapping
+						// device memory (BARs). This is critical for GPU passthrough on ARM64.
+						holeSize := iommupci.CalculateTotalPCIHole64Size(c.IommuPCI.PCIHoleSize, iommupci.PCIHoleMarginKiB)
+
+						// Update existing pcie-root controller's PCI hole size if present
+						pcihole64CtrlExists := false
+						for i := range domain.Spec.Devices.Controllers {
+							ctrl := &domain.Spec.Devices.Controllers[i]
+							if ctrl.Type == "pci" && ctrl.Index == "0" && ctrl.Model == "pcie-root" && ctrl.PCIHole64 != nil {
+								ctrl.PCIHole64.Value = uint(holeSize)
+								pcihole64CtrlExists = true
+								break
+							}
+						}
+
+						if !pcihole64CtrlExists {
+							// Add pcie-root controller with configured PCI hole size.
+							// This ensures sufficient address space for device memory mapping.
+							domain.Spec.Devices.Controllers = append(domain.Spec.Devices.Controllers,
+								api.Controller{
+									Type:  "pci",
+									Index: "0",
+									Model: "pcie-root",
+									PCIHole64: &api.PCIHole64{
+										Value: uint(holeSize),
+										Unit:  "KiB",
+									},
+								},
+							)
+						}
+					}
 				}
 			}
+		}
+	}
+
+	// clean-up "tofill" leftovers
+	for i := range domain.Spec.Devices.HostDevices {
+		hostDev := &domain.Spec.Devices.HostDevices[i]
+		if hostDev.ACPI != nil && hostDev.ACPI.NodeSet == "tofill" {
+			hostDev.ACPI = nil
 		}
 	}
 
