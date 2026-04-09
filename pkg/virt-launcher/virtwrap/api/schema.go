@@ -237,6 +237,7 @@ type DomainSpec struct {
 	IOThreads      *IOThreads      `xml:"iothreads,omitempty"`
 	LaunchSecurity *LaunchSecurity `xml:"launchSecurity,omitempty"`
 	OnReboot       string          `xml:"on_reboot,omitempty"`
+	IOMMUFD        *IOMMUFD        `xml:"iommufd,omitempty"`
 }
 
 const DomainOnRebootDestroy = "destroy"
@@ -307,11 +308,11 @@ type NUMA struct {
 }
 
 type NUMACell struct {
-	ID           string `xml:"id,attr"`
-	CPUs         string `xml:"cpus,attr"`
-	Memory       uint64 `xml:"memory,attr,omitempty"`
-	Unit         string `xml:"unit,attr,omitempty"`
-	MemoryAccess string `xml:"memAccess,attr,omitempty"`
+	ID           string  `xml:"id,attr"`
+	CPUs         string  `xml:"cpus,attr,omitempty"`
+	Memory       *uint64 `xml:"memory,attr,omitempty"`
+	Unit         string  `xml:"unit,attr,omitempty"`
+	MemoryAccess string  `xml:"memAccess,attr,omitempty"`
 }
 
 type CPUFeature struct {
@@ -619,6 +620,22 @@ type MemoryDevice struct {
 	Address *Address      `xml:"address,omitempty"`
 }
 
+type IOMMUDevice struct {
+	XMLName xml.Name     `xml:"iommu"`
+	Model   string       `xml:"model,attr"`
+	Driver  *IOMMUDriver `xml:"driver,omitempty"`
+}
+
+type IOMMUDriver struct {
+	XMLName  xml.Name `xml:"driver"`
+	PciBus   string   `xml:"pciBus,attr"`
+	Accel    string   `xml:"accel,attr"`
+	Ats      string   `xml:"ats,attr"`
+	Ril      string   `xml:"ril,attr"`
+	SSIDSize string   `xml:"ssidSize,attr"`
+	Oas      string   `xml:"oas,attr"`
+}
+
 type Devices struct {
 	Emulator     string             `xml:"emulator,omitempty"`
 	Interfaces   []Interface        `xml:"interface"`
@@ -641,6 +658,7 @@ type Devices struct {
 	TPMs         []TPM              `xml:"tpm,omitempty"`
 	VSOCK        *VSOCK             `xml:"vsock,omitempty"`
 	Memory       *MemoryDevice      `xml:"memory,omitempty"`
+	IOMMU        []IOMMUDevice      `xml:"iommu,omitempty"`
 }
 
 type PanicDevice struct {
@@ -732,10 +750,22 @@ type HostDevice struct {
 	Alias     *Alias           `xml:"alias,omitempty"`
 	Display   string           `xml:"display,attr,omitempty"`
 	RamFB     string           `xml:"ramfb,attr,omitempty"`
+	Driver    *HostDevDriver   `xml:"driver,omitempty"`
+	ACPI      *ACPIHostDev     `xml:"acpi,omitempty"`
 }
 
 type HostDeviceSource struct {
 	Address *Address `xml:"address,omitempty"`
+}
+
+type ACPIHostDev struct {
+	XMLName xml.Name `xml:"acpi"`
+	NodeSet string   `xml:"nodeset,attr,omitempty"`
+}
+
+type HostDevDriver struct {
+	XMLName xml.Name `xml:"driver"`
+	Iommufd string   `xml:"iommufd,attr,omitempty"`
 }
 
 // END HostDevice -----------------------------
@@ -1196,6 +1226,15 @@ type LaunchSecurity struct {
 }
 
 //END LaunchSecurity --------------------
+//BEGIN IOMMUFD --------------------
+
+type IOMMUFD struct {
+	XMLName xml.Name `xml:"iommufd"`
+	Enabled string   `xml:"enabled,attr"`
+	FDGroup string   `xml:"fdgroup,attr,omitempty"`
+}
+
+//END IOMMUFD --------------------
 //BEGIN Clock --------------------
 
 type Clock struct {
